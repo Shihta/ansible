@@ -402,6 +402,22 @@ class AzureInventory(object):
 
         self._args = self._parse_cli_args()
 
+        self._file_settings = self._load_settings()
+        self.cache_path = "~/.ansible/tmp"
+        self.cache_max_age = 1800
+        if self._file_settings.get('cache_path', None) is not None:
+            setattr(self, 'cache_path', self._file_settings.get('cache_path'))
+        if self._file_settings.get('cache_max_age', None) is not None:
+            setattr(self, 'cache_max_age', int(self._file_settings.get('cache_max_age')))
+        if os.path.isfile(os.path.expanduser(self.cache_path) + "/ansible-azure.cache") and not self._args.refresh_cache:
+            mod_time = os.path.getmtime(os.path.expanduser(self.cache_path) + "/ansible-azure.cache")
+            current_time = time.time()
+            if (mod_time + self.cache_max_age) > current_time:
+                with open(os.path.expanduser(self.cache_path) + "/ansible-azure.cache") as data_file:
+                    self._inventory = json.load(data_file)
+                print (self._json_format_dict(pretty=self._args.pretty))
+                sys.exit(0)
+
         try:
             rm = AzureRM(self._args)
         except Exception as e:
@@ -421,8 +437,6 @@ class AzureInventory(object):
         self.group_by_security_group = True
         self.group_by_tag = True
         self.include_powerstate = True
-        self.cache_path = "~/.ansible/tmp"
-        self.cache_max_age = 1800
 
         self._inventory = dict(
             _meta=dict(
@@ -488,17 +502,6 @@ class AzureInventory(object):
         return parser.parse_args()
 
     def get_inventory(self):
-        write_cache = True
-        if os.path.isfile(os.path.expanduser(self.cache_path) + "/ansible-azure.cache") and not self._args.get('refresh_cache'):
-            mod_time = os.path.getmtime(os.path.expanduser(self.cache_path) + "/ansible-azure.cache")
-            current_time = time.time()
-            if (mod_time + 1800) > current_time:
-                with open(os.path.expanduser(self.cache_path) + "/ansible-azure.cache") as data_file:
-                    self._inventory = json.load(data_file)
-                    return
-        else:
-            write_cache = False
-
         if len(self.resource_groups) > 0:
             # get VMs for requested resource groups
             for resource_group in self.resource_groups:
@@ -525,8 +528,7 @@ class AzureInventory(object):
             else:
                 self._load_machines(virtual_machines)
 
-
-        if self.cache_max_age > 0 and write_cache:
+        if self.cache_max_age > 0:
             try:
                 with open(os.path.expanduser(self.cache_path) + "/ansible-azure.cache", 'w') as cf:
                     cf.write(self._json_format_dict(pretty=self._args.pretty))
@@ -715,17 +717,15 @@ class AzureInventory(object):
     def _get_settings(self):
         # Load settings from the .ini, if it exists. Otherwise,
         # look for environment values.
-        file_settings = self._load_settings()
+        file_settings = self._file_settings
         if file_settings:
             for key in AZURE_CONFIG_SETTINGS:
                 if key in ('resource_groups', 'tags', 'locations') and file_settings.get(key):
                     values = file_settings.get(key).split(',')
                     if len(values) > 0:
                         setattr(self, key, values)
-                elif key in ('cache_path') and file_settings.get(key, None) is not None:
-                    setattr(self, key, file_settings.get(key))
-                elif key == 'cache_max_age' and file_settings.get(key, None) is not None:
-                    setattr(self, key, int(file_settings.get(key)))
+                elif key in ('cache_path', 'cache_max_age'):
+                    continue
                 elif file_settings.get(key):
                     val = self._to_boolean(file_settings[key])
                     setattr(self, key, val)
@@ -736,10 +736,6 @@ class AzureInventory(object):
                     values = env_settings.get(key).split(',')
                     if len(values) > 0:
                         setattr(self, key, values)
-                elif key in ('cache_path') and file_settings.get(key, None) is not None:
-                    setattr(self, key, file_settings.get(key))
-                elif key == 'cache_max_age' and file_settings.get(key, None) is not None:
-                    setattr(self, key, int(file_settings.get(key)))
                 elif env_settings.get(key, None) is not None:
                     val = self._to_boolean(env_settings[key])
                     setattr(self, key, val)
