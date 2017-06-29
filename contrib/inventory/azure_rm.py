@@ -673,6 +673,7 @@ class AzureInventory(object):
     def _add_host(self, vars):
 
         host_name = self._to_safe(vars['name'])
+        private_ip = vars['private_ip']
         resource_group = self._to_safe(vars['resource_group'])
         security_group = None
         if vars.get('security_group'):
@@ -681,20 +682,21 @@ class AzureInventory(object):
         if self.group_by_resource_group:
             if not self._inventory.get(resource_group):
                 self._inventory[resource_group] = []
-            self._inventory[resource_group].append(host_name)
+            self._inventory[resource_group].append(private_ip)
 
         if self.group_by_location:
             if not self._inventory.get(vars['location']):
                 self._inventory[vars['location']] = []
-            self._inventory[vars['location']].append(host_name)
+            self._inventory[vars['location']].append(private_ip)
 
         if self.group_by_security_group and security_group:
             if not self._inventory.get(security_group):
                 self._inventory[security_group] = []
-            self._inventory[security_group].append(host_name)
+            self._inventory[security_group].append(private_ip)
 
-        self._inventory['_meta']['hostvars'][host_name] = vars
-        self._inventory['azure'].append(host_name)
+        self._inventory['_meta']['hostvars'][private_ip] = vars
+        self._inventory['azure'].append(private_ip)
+        self._inventory[host_name] = [private_ip, ]
 
         if self.group_by_tag and vars.get('tags'):
             for key, value in vars['tags'].items():
@@ -704,8 +706,8 @@ class AzureInventory(object):
                     self._inventory[safe_key] = []
                 if not self._inventory.get(safe_value):
                     self._inventory[safe_value] = []
-                self._inventory[safe_key].append(host_name)
-                self._inventory[safe_value].append(host_name)
+                self._inventory[safe_key].append(private_ip)
+                self._inventory[safe_value].append(private_ip)
 
     def _json_format_dict(self, pretty=False):
         # convert inventory to json
